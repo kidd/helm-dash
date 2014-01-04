@@ -64,26 +64,34 @@ Suggested possible values are:
   :group 'helm-dash)
 
 (defun helm-dash-connect-to-docset (docset)
-      (sqlite-init (format
-                    "%s/%s.docset/Contents/Resources/docSet.dsidx"
-                    helm-dash-docsets-path docset)))
+  (sqlite-init (format
+                "%s/%s.docset/Contents/Resources/docSet.dsidx"
+                helm-dash-docsets-path docset)))
 
 (defvar helm-dash-connections nil
 ;;; create conses like ("Go" . connection)
 )
 
+(setq helm-dash-connections nil)
+
 (defun helm-dash-create-connections ()
   (when (not helm-dash-connections)
     (setq helm-dash-connections
           (mapcar (lambda (x)
-                    (cons x (helm-dash-connect-to-docset x)))
+                    (let ((connection (helm-dash-connect-to-docset x)))
+                      (list x connection (helm-dash-docset-type connection))))
                   helm-dash-active-docsets))))
 
 (defun helm-dash-reset-connections ()
   (interactive)
-  (dolist (i helm-dash-connections)
-    (sqlite-bye (cdr i)))
+  (dolist (connection helm-dash-connections)
+    (sqlite-bye (cadr connection)))
   (setq helm-dash-connections nil))
+
+(defun helm-dash-docset-type (connection)
+  (if (member "searchIndex" (car (sqlite-query connection ".tables")))
+    "DASH"
+    "ZDASH"))
 
 (defun helm-dash-search-all-docsets ()
   (let ((url "https://api.github.com/repos/Kapeli/feeds/contents/"))
@@ -177,11 +185,11 @@ See here the reason: https://github.com/areina/helm-dash/issues/17.")
       (let ((res
              (and
               ;; hack to avoid sqlite hanging (timeouting) because of no results
-              (< 0 (string-to-number (caadr (sqlite-query (cdr docset)
+              (< 0 (string-to-number (caadr (sqlite-query (cadr docset)
                                                           (format
                                                            "SELECT COUNT(*) FROM %s %s"
                                                            db where-query)))))
-              (sqlite-query (cdr docset)
+              (sqlite-query (cadr docset)
                             (format
                              "SELECT t.type, t.name, t.path FROM %s t %s order by lower(t.name)"
                              db where-query)))))
@@ -190,7 +198,7 @@ See here the reason: https://github.com/areina/helm-dash/issues/17.")
         (setq full-res
               (append full-res
                       (mapcar (lambda (x)
-                                (cons (format "%s - %s"  (car docset) (cadr x)) (format "%s%s%s%s"
+                                (cons (format "%s - %s"  (cadr docset) (cadr x)) (format "%s%s%s%s"
                                                           "file://"
                                                           helm-dash-docsets-path
                                                           (format "/%s.docset/Contents/Resources/Documents/"
